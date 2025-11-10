@@ -1,0 +1,125 @@
+3. Autoencoder.ipynb (Anomaly Detection)
+This notebook uses an Autoencoder for anomaly detection in credit card data. This is an unsupervised technique.
+
+The Concept: An autoencoder is trained to reconstruct its own input. It has two parts:
+
+Encoder: Compresses the input data into a small "latent" representation (a bottleneck).
+
+Decoder: Tries to rebuild the original data from that small representation.
+
+We will train this model only on normal transactions. It will get very good at reconstructing them. When we show it a fraudulent transaction, which has different patterns, it will fail to reconstruct it well. This high reconstruction error is our signal for an anomaly.
+
+Cell 5: Data Loading
+Python
+
+data = pd.read_csv("creditcard.csv")
+x = data.drop(["Time", "Class"], axis=1)
+y = data["Class"]
+
+scaler = MinMaxScaler()
+x_scaled = scaler.fit_transform(x)
+
+# Train only on normal transactions (Class = 0)
+x_train = x_scaled[y == 0]
+# Test on the anomaly points
+x_test = x_scaled[y == 1]
+Explanation:
+
+scaler = MinMaxScaler(): We scale all features to be [0, 1]. This is very important for autoencoders.
+
+x_train = x_scaled[y == 0]: This is the key idea. Our training set consists only of normal, non-fraudulent data.
+
+x_test = x_scaled[y == 1]: We will use the fraud data later to see how well our model "fails" at reconstructing it.
+
+Cell 6: Model Architecture
+Python
+
+dim = x_train.shape[1]
+print(dim)
+input_layer = Input(shape=(dim,))
+# --- Encoder ---
+encoder = Dense(16, activation="relu")(input_layer)
+encoder = Dense(8, activation="relu")(encoder)
+latent = Dense(4, activation="relu")(encoder)
+# --- Decoder ---
+decoder = Dense(8, activation="relu")(latent)
+decoder = Dense(16, activation="relu")(decoder)
+output_layer = Dense(dim, activation="sigmoid")(decoder)
+
+model = Model(input_layer, output_layer)
+model.compile(optimizer=Adam(learning_rate=0.001), loss="mse", metrics=["mae"])
+Output:
+
+29
+Explanation:
+
+dim = 29: Our data has 29 features.
+
+Encoder: The network compresses the 29 features down to 16, then 8, and finally to a latent space (bottleneck) of just 4 neurons.
+
+Decoder: This is a mirror image, attempting to rebuild the 29 features from the 4-neuron compression (4 -> 8 -> 16 -> 29).
+
+output_layer = Dense(dim, activation="sigmoid"): The final layer has 29 neurons and a sigmoid activation to ensure its output is also between 0 and 1, just like our scaled input.
+
+model = Model(...): We are using the Keras "Functional API" (Model and Input) instead of Sequential. It's more flexible for non-linear stacks like this.
+
+loss="mse": We compile with Mean Squared Error. The model's goal is to minimize the squared difference between the input_layer and the output_layer.
+
+Cell 7: Train Model
+Python
+
+history = model.fit(
+    x_train, x_train,
+    epochs=10,
+    batch_size=64,
+    shuffle=True,
+    validation_split=0.1
+)
+Output:
+
+Epoch 1/10
+3999/3999 [==============================] - 16s 3ms/step - loss: 0.0043 - mae: 0.0354 - val_loss: 0.0011 - val_mae: 0.0216
+...
+Epoch 10/10
+3999/3999 [==============================] - 17s 4ms/step - loss: 8.1690e-04 - mae: 0.0165 - val_loss: 8.0210e-04 - val_mae: 0.0166
+Explanation:
+
+model.fit(x_train, x_train, ...): Notice we pass x_train as both the input (X) and the target (y). We are teaching the model to predict its own input.
+
+The val_loss gets very, very small (8.0210e-04), which means our model is now excellent at reconstructing normal transactions.
+
+Cell 9: Anomaly Detection
+Python
+
+reconstructed = model.predict(x_scaled)
+mse = np.mean(np.square(x_scaled - reconstructed), axis=1)
+
+data["err"] = mse
+data["predicted_class"] = np.where(data["err"] > 0.001, 1, 0)
+
+fraud_cases = data[data["Class"] == 1]
+correctly_predicted = fraud_cases[fraud_cases["predicted_class"] == 1]
+
+print("Actual fraud cases:", len(fraud_cases))
+print("Correctly predicted frauds:", len(correctly_predicted))
+# ... (print accuracy) ...
+Explanation:
+
+model.predict(x_scaled): Use the trained model to reconstruct all data (both normal and fraud).
+
+mse = ...: Calculate the reconstruction error (mse) for every single row.
+
+data["err"] = mse: Store this error in our original dataframe.
+
+data["predicted_class"] = np.where(...): This is our thresholding step. We are making an assumption: if the reconstruction error (err) is greater than 0.001, we'll predict it's fraud (1), otherwise we'll predict it's normal (0).
+
+The final lines compare our predictions (predicted_class) to the actual labels (Class) to see how many of the real frauds we successfully identified.
+
+Cell 12 (Duplicate Cell with Error)
+This cell is a rewrite of the one above, but it contains a common error.
+
+data["predicted"] = ... (You named the column "predicted")
+
+correctly_predicted = fraud_cases[fraud_cases["predicted_class"] == 1] (You tried to access a column named "predicted_class")
+
+This mismatch causes the KeyError: 'predicted_class' seen in your output.

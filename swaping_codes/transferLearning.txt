@@ -1,0 +1,139 @@
+4. transferLearning.ipynb (Using VGG16)
+This notebook demonstrates Transfer Learning, one of the most powerful concepts in DL. Instead of training a big image model from scratch (which takes days/weeks), we use a model that's already been trained on a giant dataset (ImageNet).
+
+The Concept:
+
+Load a powerful pre-trained model (VGG16) but without its final classifier layers.
+
+Freeze all the pre-trained layers so their weights can't be changed.
+
+Add our own small classifier on top.
+
+Train only our new top layers on our small, specific dataset (airplanes vs. ants).
+
+Cell 7: Load Base Model
+Python
+
+from tensorflow.keras.applications import VGG16
+
+base = VGG16(
+    weights="vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5",
+    include_top=False,
+    input_shape=(224,224,3)
+)
+Explanation:
+
+VGG16: We are loading the VGG16 model architecture.
+
+weights="...notop.h5": We are loading weights that were pre-trained on the ImageNet dataset (millions of images).
+
+include_top=False: This is the key. We are discarding the original top layers (the classifier that predicted 1000 ImageNet classes). We just want the "base" of the model, which is a powerful feature extractor.
+
+input_shape=(224,224,3): We specify that our images will be 224x224 pixels with 3 color channels (RGB).
+
+Cell 8: Freeze Base Model
+Python
+
+for layer in base.layers:
+    layer.trainable = False
+Explanation:
+
+This loop iterates over every layer in the VGG16 base and sets it to trainable = False. This "freezes" the pre-trained weights. When we call model.fit(), these weights will not be updated.
+
+Cell 12: Data Generators
+Python
+
+train_gen = ImageDataGenerator(rescale=1./255, validation_split=0.2)
+selected_classes = ['airplanes', 'ant']
+
+train_data = train_gen.flow_from_directory(
+    "caltech-101-img", target_size=(224,224),
+    batch_size=32, subset='training', classes=selected_classes
+)
+# ... (similar for val_data) ...
+Output:
+
+Found 674 images belonging to 2 classes.
+Found 168 images belonging to 2 classes.
+Explanation:
+
+ImageDataGenerator: This is Keras's standard tool for loading images from folders.
+
+rescale=1./255: Normalizes the pixel values to [0, 1].
+
+validation_split=0.2: Automatically reserves 20% of the data for validation.
+
+flow_from_directory: This automatically reads images from the specified path. It's smart enough to use the sub-folder names as labels. It expects a structure like:
+
+caltech-101-img/
+    airplanes/
+        img1.jpg, ...
+    ant/
+        img2.jpg, ...
+classes=selected_classes: We're telling it to only look in the 'airplanes' and 'ant' folders.
+
+The output shows it found 674 images for training and 168 for validation.
+
+Cell 16: Build Full Model
+Python
+
+model = Sequential([
+    base,
+    Flatten(),
+    Dense(256, activation='relu'),
+    Dropout(0.2),
+    Dense(256, activation='relu'),
+    Dropout(0.4),
+    Dense(train_data.num_classes, activation='softmax')
+])
+
+model.compile(
+    optimizer=Adam(learning_rate = 0.1),
+    loss="categorical_crossentropy",
+    metrics=["accuracy"]
+)
+Explanation:
+
+model = Sequential([...]): We're building our new model.
+
+base: The first layer is the entire (frozen) VGG16 base model.
+
+Flatten(): The output of VGG16 is a 3D feature map. We flatten it into a 1D vector.
+
+Dense(...), Dropout(...): This is our new, trainable classifier "head" that we've added on top.
+
+Dense(train_data.num_classes, ...): The final output layer has 2 neurons (for "airplane" and "ant") and a softmax activation.
+
+model.compile(...): We compile the model. The optimizer will only train the weights of our new Dense/Dropout layers, since the base is frozen.
+
+Cell 17: Train Model
+Python
+
+model.fit(train_data, validation_data=val_data, epochs=5)
+Output:
+
+Epoch 1/5
+22/22 [==============================] - 93s 4s/step - accuracy: 0.8124 - loss: 3620.5239 - val_accuracy: 0.9524 - val_loss: 0.1482
+...
+Epoch 5/5
+22/22 [==============================] - 93s 4s/step - accuracy: 0.9425 - loss: 0.7520 - val_accuracy: 0.9524 - val_loss: 0.1917
+Explanation:
+
+model.fit(train_data, ...): We train the model using our image generator.
+
+Output Analysis: Look at Epoch 1! The val_accuracy is already 95.24%. This is the power of transfer learning. The VGG16 base already knows how to "see" features. Our new classifier only had to learn "ah, those features mean airplane, and these features mean ant," which it did in one pass.
+
+Cell 18: Evaluate
+Python
+
+loss, accuracy = model.evaluate(val_data)
+print(f"Validation Loss: {loss:.4f}")
+print(f"Validation Accuracy: {accuracy:.4f}")
+Output:
+
+6/6 [==============================] - 17s 3s/step - accuracy: 0.9469 - loss: 0.2126
+Validation Loss: 0.1917
+Validation Accuracy: 0.9524
+Explanation:
+
+This just runs a final evaluation on the validation set to confirm the performance. A 95.24% accuracy on a custom (and small) dataset after only 5 epochs of training is excellent and shows the method was a success.

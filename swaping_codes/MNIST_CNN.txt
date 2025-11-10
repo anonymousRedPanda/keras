@@ -1,0 +1,91 @@
+2. MNIST_CNN.ipynb (Convolutional Neural Network)
+This notebook solves the same problem (MNIST) but uses a Convolutional Neural Network (CNN), which is the standard for image tasks.
+
+Cell 1: Main Block
+Section 1: Data Loading (load_mnist_csv)
+
+Python
+
+# ... (imports) ...
+def load_mnist_csv(path, img_size=28):
+    # ... (pandas loading) ...
+    # Normalize pixel values
+    X /= 255.0
+    
+    # Reshape into 4D tensor for CNN (samples, height, width, channels)
+    X = X.reshape(-1, img_size, img_size, 1)
+    
+    return X, y
+# ... (load and one-hot encode) ...
+Output:
+
+✅ Training data shape: (60000, 28, 28, 1) (60000, 10)
+✅ Testing data shape: (10000, 28, 28, 1) (10000, 10)
+Explanation:
+
+X = X.reshape(-1, 28, 28, 1): This is the most important difference from the first notebook. A Dense network needs a flat 1D vector (784). A CNN needs the spatial information, so we shape it as a 3D image: (28, 28, 1) (Height=28, Width=28, Channels=1 for grayscale). The -1 just tells numpy to automatically figure out the number of samples (60,000).
+
+Section 2: CNN Model Architecture
+
+Python
+
+model = models.Sequential([
+    layers.Conv2D(32, (3,3), activation='relu', input_shape=(28,28,1)),
+    layers.MaxPooling2D((2,2)),
+    
+    layers.Conv2D(64, (3,3), activation='relu'),
+    layers.MaxPooling2D((2,2)),
+    
+    layers.Flatten(),
+    layers.Dense(128, activation='relu'),
+    layers.Dropout(0.5),
+    layers.Dense(num_classes, activation='softmax')
+])
+Explanation:
+
+layers.Conv2D(32, (3,3), ...): This is a Convolutional Layer. It learns 32 different "filters" (or kernels), each 3x3 in size. These filters slide (or "convolve") across the image, learning to detect basic features like edges, curves, and corners.
+
+layers.MaxPooling2D((2,2)): This is a Pooling Layer. It takes 2x2 blocks of pixels and keeps only the maximum value. This downsamples the image (halving its size), which reduces computational load and makes the model more robust to where the feature is in the image.
+
+layers.Conv2D(64, (3,3), ...): A second convolutional layer. It learns 64 filters. By stacking layers, it learns to combine the simple features (edges) from the first layer into more complex shapes.
+
+layers.Flatten(): This is the bridge. The output from the CNN layers is a 3D feature map (5, 5, 64). This layer "flattens" it into a 1D vector (5 * 5 * 64 = 1600) so it can be fed into the final Dense layers.
+
+layers.Dense(...): This is the same classifier "head" as before, which takes the learned features and makes the final prediction.
+
+Section 3: Compile, Train, Evaluate
+
+Python
+
+model.compile(optimizer=tf.keras.optimizers.Adam(...), ...)
+model.summary()
+history = model.fit(...)
+test_loss, test_acc = model.evaluate(X_test, y_test_cat, verbose=0)
+print(f"\n✅ Test Accuracy: {test_acc*100:.2f}%")
+Output:
+
+Model: "sequential"
+_________________________________________________________________
+ Layer (type)                Output Shape              Param #   
+=================================================================
+ conv2d (Conv2D)             (None, 26, 26, 32)        320       
+...
+ flatten (Flatten)           (None, 1600)              0         
+...
+=================================================================
+Total params: 225,034
+...
+Epoch 1/10
+422/422 [==============================] - 9s 20ms/step - accuracy: 0.7976 - loss: 0.6403 - val_accuracy: 0.9847 - val_loss: 0.0586
+...
+Epoch 10/10
+422/422 [==============================] - 8s 18ms/step - accuracy: 0.9914 - loss: 0.0268 - val_accuracy: 0.9925 - val_loss: 0.0298
+
+✅ Test Accuracy: 99.32%
+Explanation:
+
+Model Summary: This table shows how the data shape (e.g., (26, 26, 32)) changes as it passes through each layer.
+
+Training: The model trains just like before.
+
+Final Accuracy: 99.32%! This is a big jump from the 97.82% of the Dense network. It shows that the CNN, by learning spatial features, is much better suited for image tasks.

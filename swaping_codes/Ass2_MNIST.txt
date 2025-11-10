@@ -1,0 +1,190 @@
+1. Ass2_MNIST.ipynb (Feedforward Network for MNIST)
+This notebook builds a simple "fully-connected" (or "Dense") neural network to classify handwritten digits from the MNIST dataset.
+
+Cell 2: Imports & Seed
+Python
+
+import numpy as np
+x = 42
+np.random.seed(x)
+print(x)
+Output:
+
+42
+Explanation:
+
+np.random.seed(42): This is for reproducibility. Neural networks start with random initial weights. By setting a "seed," you ensure that every time you run this code, you get the exact same set of "random" numbers. This is crucial for debugging and getting consistent results.
+
+Cell 3: Main Training Block
+This is the main "all-in-one" cell. I'll break down its parts.
+
+Section 1: Imports
+
+Python
+
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.optimizers import SGD
+Explanation:
+
+tensorflow: This is the core Deep Learning library.
+
+keras: This is a high-level, user-friendly API within TensorFlow for building models.
+
+Sequential: The simplest type of Keras model, a linear stack of layers.
+
+Dense: A "fully-connected" layer, where every neuron is connected to every neuron in the previous layer. This is the basic building block of a feedforward network.
+
+Dropout: A regularization technique to prevent overfitting.
+
+to_categorical: A utility to one-hot encode your labels.
+
+Section 2: Data Loading & Preprocessing
+
+Python
+
+# ... (seed and path setup) ...
+
+def load_mnist_csv_with_header(path, expected_pixels=784):
+    # ... (pandas loading logic) ...
+    y = df.iloc[:, 0].astype(int).values
+    X = df.iloc[:, 1:].astype("float32").values
+    return X, y
+
+X_train, y_train = load_mnist_csv_with_header(train_path)
+X_test,  y_test  = load_mnist_csv_with_header(test_path)
+
+print("Train shape (X,y):", X_train.shape, y_train.shape)
+print("Test  shape (X,y):", X_test.shape,  y_test.shape)
+Output:
+
+Train shape (X,y): (60000, 784) (60000,)
+Test  shape (X,y): (10000, 784) (10000,)
+Explanation:
+
+The load_mnist_csv_with_header function uses pandas to read your CSV.
+
+y = df.iloc[:, 0]: It assumes the first column is the label (the digit, 0-9).
+
+X = df.iloc[:, 1:]: It assumes all other columns are the features (the pixels).
+
+The output shows you've loaded 60,000 training images. Each image is a "flat" vector of 784 pixels (because 28x28 = 784).
+
+Python
+
+# Normalize pixels to [0,1]
+X_train /= 255.0
+X_test  /= 255.0
+
+# One-hot encode labels
+num_classes = len(np.unique(y_train))
+y_train_cat = to_categorical(y_train, num_classes)
+y_test_cat  = to_categorical(y_test,  num_classes)
+Explanation:
+
+X_train /= 255.0: Normalization. Pixel values range from 0 (black) to 255 (white). Neural networks train much faster and more stably when input data is scaled to a small range, typically [0, 1].
+
+to_categorical(y_train, ...): One-Hot Encoding. Your y_train is a list of numbers like [5, 0, 4, ...]. This is a problem for classification, as the model might think '5' is "greater than" '4'. We convert this to a binary vector. For 10 classes, the label 5 becomes [0, 0, 0, 0, 0, 1, 0, 0, 0, 0]. This is what the model will actually be trained to predict.
+
+Section 3: Model Architecture
+
+Python
+
+input_dim = X_train.shape[1]
+model = Sequential([
+    Dense(256, activation="relu", input_shape=(input_dim,)),
+    Dropout(0.2),
+    Dense(128, activation="relu"),
+    Dropout(0.2),
+    Dense(num_classes, activation="softmax"),
+])
+Explanation:
+
+Dense(256, activation="relu", input_shape=(784,)): The first hidden layer.
+
+Dense(256): A fully-connected layer with 256 neurons.
+
+activation="relu": (Rectified Linear Unit) The most common activation function. It introduces non-linearity (it's max(0, x)), allowing the network to learn complex patterns.
+
+input_shape=(784,): This tells the first layer to expect a 1D vector of 784 features.
+
+Dropout(0.2): A regularization layer. During training, it randomly "drops" 20% of the neuron connections from the previous layer. This prevents the model from overfitting (i.e., just memorizing the training data).
+
+Dense(128, activation="relu"): A second hidden layer with 128 neurons.
+
+Dense(num_classes, activation="softmax"): The final output layer.
+
+Dense(10): It has 10 neurons, one for each class (0-9).
+
+activation="softmax": A special activation for multi-class classification. It takes the 10 neuron outputs and converts them into a probability distribution (all 10 values will sum to 1.0). The neuron with the highest probability is the model's prediction.
+
+Section 4: Compile and Train
+
+Python
+
+optimizer = SGD(learning_rate=0.01, momentum=0.9, nesterov=True)
+model.compile(optimizer=optimizer, loss="categorical_crossentropy", metrics=["accuracy"])
+
+history = model.fit(
+    X_train, y_train_cat,
+    validation_split=0.1,
+    epochs=11,
+    batch_size=128,
+    verbose=1
+)
+Output:
+
+Epoch 1/11
+422/422 [==============================] - 15s 21ms/step - accuracy: 0.8269 - loss: 0.5801 - val_accuracy: 0.9445 - val_loss: 0.2030
+...
+Epoch 11/11
+422/422 [==============================] - 4s 10ms/step - accuracy: 0.9755 - loss: 0.0807 - val_accuracy: 0.9785 - val_loss: 0.0706
+Explanation:
+
+model.compile(...): This configures the model for training.
+
+optimizer=SGD(...): We're using Stochastic Gradient Descent (with momentum) as the algorithm to update the model's weights.
+
+loss="categorical_crossentropy": This is the loss function. Since our labels are one-hot encoded (categorical), this loss function is the right choice. It measures how different the model's predicted probability distribution is from the true one.
+
+metrics=["accuracy"]: We want to monitor accuracy during training.
+
+model.fit(...): This starts the training.
+
+validation_split=0.1: It automatically holds back 10% of the training data (6,000 images) to use as a validation set.
+
+epochs=11: It will pass over the full training dataset 11 times.
+
+Epoch Output:
+
+accuracy: 0.8269 - loss: 0.5801: This is the performance on the training data for that epoch.
+
+val_accuracy: 0.9445 - val_loss: 0.2030: This is the performance on the validation set (the 10% it held back). This is the more important number, as it shows how well the model is generalizing to data it hasn't been trained on.
+
+Section 5: Evaluate and Plot
+
+Python
+
+test_loss, test_acc = model.evaluate(X_test, y_test_cat, verbose=0)
+print(f"\nTest Loss: {test_loss:.4f}   Test Accuracy: {test_acc*100:.2f}%")
+# ... (plotting code) ...
+Output:
+
+Test Loss: 0.0728   Test Accuracy: 97.82%
+Explanation:
+
+model.evaluate(X_test, ...): Now that training is done, we check the model's final performance on the test set—the 10,000 images it has never seen.
+
+Final Accuracy: 97.82% is a great result for this simple model!
+
+Graphs:
+
+Loss Graph: Shows training loss (blue) and validation loss (orange) both decreasing. This is perfect. If validation loss (orange) started to increase while training loss (blue) kept decreasing, that would be a clear sign of overfitting.
+
+Accuracy Graph: Shows both training and validation accuracy increasing and leveling off.
