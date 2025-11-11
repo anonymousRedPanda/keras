@@ -1,0 +1,208 @@
+This notebook trains a Continuous Bag of Words (CBOW) model. The goal of CBOW is to learn numeric representations (called "embeddings") for words. It does this by "predicting" a target word based on its surrounding context words.
+
+For example, in the sentence "influenza can spread faster than", the model takes the context {"influenza", "can", "faster", "than"} and tries to predict the target word "spread". By doing this thousands of time, the model's Embedding layer learns that words used in similar contexts (like "covid" and "influenza") should have similar numeric vectors.
+
+🔬 Code Explanation
+Cell 1: Imports
+Python
+
+from keras.preprocessing import text
+from keras.preprocessing.text import Tokenizer
+from keras.preprocessing.sequence import pad_sequences
+from keras.utils import to_categorical
+
+from keras.models import Sequential
+from keras.layers import Dense, Embedding, Lambda
+from keras import backend as K
+
+from sklearn.metrics.pairwise import euclidean_distances
+
+import numpy as np
+import pandas as pd
+This cell imports all the necessary libraries:
+
+Keras: Used for building and training the deep learning model.
+
+Tokenizer, pad_sequences, to_categorical: Tools for preprocessing text data.
+
+Sequential, Dense, Embedding, Lambda: Layers used to build the model.
+
+Scikit-learn (sklearn): Used for euclidean_distances to calculate the similarity between word vectors.
+
+Numpy & Pandas: Used for numerical operations and displaying the final vectors in a clean table.
+
+Cell 2: The Corpus
+Python
+
+data = """The speed of transmission is an important point..."""
+This cell defines the corpus, which is the raw text data the model will learn from. Here, it's a short text comparing COVID-19 and Influenza.
+
+Cell 3: Initial Data Split
+Python
+
+dl_data = data.split()
+This line splits the raw text into a list of strings, using spaces as the delimiter. dl_data becomes ['The', 'speed', 'of', 'transmission', 'is', 'an', 'important', 'point', 'of', 'difference', 'between', 'the', 'two', 'viruses.', ...].
+
+Cell 4: Tokenization
+Python
+
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(dl_data)
+
+words2id = tokenizer.word_index
+words2id['PAD']=0
+
+id2words = {v:k for k,v in words2id.items()}
+wid = [[words2id[w] for w in text.text_to_word_sequence(doc)]for doc in dl_data]
+This is the main preprocessing step:
+
+tokenizer = Tokenizer(): Initializes a Keras tokenizer.
+
+tokenizer.fit_on_texts(dl_data): The tokenizer analyzes the list of words (dl_data) to build its vocabulary (a dictionary of all unique words).
+
+words2id = tokenizer.word_index: Creates a dictionary mapping words to unique integer IDs (e.g., 'of': 1, 'influenza': 2).
+
+words2id['PAD']=0: Adds a special "padding" token with ID 0. This is used to make all context windows the same length.
+
+id2words = ...: Creates a reverse dictionary mapping IDs back to words (e.g., 1: 'of', 2: 'influenza').
+
+wid = ...: This line is a bit complex. It re-processes the dl_data. It iterates through each string in dl_data (like "viruses.") and uses text.text_to_word_sequence() to clean it (lowercase, remove punctuation), turning "viruses." into ['viruses']. It then converts this to a list of IDs. The result, wid, is a list of lists of IDs (e.g., [[10], [11], [1], [12], ..., [3, 4], ...], where [3, 4] comes from "COVID-19.").
+
+Cell 5: Model Parameters
+Python
+
+vocab_size = len(words2id)
+window_size = 2
+embed_size = 10
+This cell sets the key hyperparameters for the model:
+
+vocab_size: The total number of unique words (plus the 'PAD' token).
+
+window_size = 2: Defines the context. This means the model will look at 2 words before and 2 words after the target word.
+
+embed_size = 10: The "dimensionality" of the word vectors. Each word will be represented by a list of 10 numbers.
+
+Cell 6: CBOW Data Generator (func)
+Python
+
+def func(corpus, vocab_size,window_size):
+    context_length = window_size*2
+    for words in corpus:
+        sent_length = len(words)
+        for index,word in enumerate(words):
+            # ... (gather context words) ...
+            x = pad_sequences(context_words,maxlen=context_length)
+            y = to_categorical(label_word,vocab_size)
+            yield(x,y)
+This defines a generator function that creates the (context, target) training pairs. It uses yield, which is memory-efficient because it generates pairs one at a time.
+
+It iterates through every single word (word) in the corpus (corpus).
+
+For each word, it gathers its context (2 words before, 2 words after).
+
+x = pad_sequences(...): The context words are collected and padded with 0s to ensure the list has a fixed length of 4 (window_size * 2).
+
+y = to_categorical(...): The target word (word) is one-hot encoded (e.g., if 'covid' is ID 3, y becomes a vector of all 0s with a 1 at index 3).
+
+yield(x,y): The function yields the (x, y) pair for training.
+
+Cell 7: Model Architecture
+Python
+
+model = Sequential([
+    Embedding(input_dim=vocab_size,output_dim=embed_size,input_length=window_size*2),
+    Lambda(lambda x: K.mean(x,axis=1),output_shape=(embed_size,)),
+    Dense(vocab_size,activation="softmax")
+])
+This is the core of the CBOW model:
+
+Embedding Layer: This is the input layer. It's essentially a lookup table. It takes the padded context (e.g., [2, 7, 0, 0]) and converts each ID into its corresponding 10-dimensional vector. The output shape is (4, 10).
+
+Lambda Layer: This is the "Bag of Words" part. It takes the 4 vectors from the embedding layer and averages them (K.mean(x, axis=1)) into a single 10-dimensional vector. This single vector represents the entire context.
+
+Dense Layer: This is the output layer. It takes the 10-dimensional context vector and predicts the probability for every word in the vocabulary. The softmax activation ensures all probabilities add up to 1. The model's goal is to make the probability for the correct target word as high as possible.
+
+Cell 8: Model Compilation
+Python
+
+model.compile(loss="categorical_crossentropy", optimizer="rmsprop",metrics=["accuracy"])
+This configures the model for training:
+
+loss="categorical_crossentropy": The standard loss function for a multi-class classification problem (where the classes are "all words in the vocabulary").
+
+optimizer="rmsprop": The algorithm used to adjust the model's weights to minimize the loss.
+
+Cell 9: Model Summary
+Python
+
+model.summary()
+This prints a text summary of the model, showing its layers, their output shapes, and the number of trainable parameters.
+
+Cell 10: Training Loop
+Python
+
+for epoch in range(1,6):
+    i=0
+    loss=0
+    for x,y in func(corpus=wid, window_size=window_size, vocab_size=vocab_size):
+        i+=1
+        loss+=model.train_on_batch(x,y)[0]
+    print('Epoch: ',epoch,'\tLoss: ',loss)
+    print()
+This manually trains the model for 5 epochs (passes over the entire dataset).
+
+for x,y in func(...): It calls the generator from Cell 6 to get one training pair at a time.
+
+model.train_on_batch(x,y): It feeds this single (x, y) pair to the model and updates the weights (specifically, the Embedding layer weights and the Dense layer weights).
+
+The loss is summed up and printed at the end of each epoch.
+
+Cell 11: Extracting Embeddings
+Python
+
+weights = model.get_weights()[0]
+weights = weights[1:]
+After training, the useful part of the model is the Embedding layer, which now contains the learned word vectors.
+
+model.get_weights()[0]: This retrieves the weights from the first layer of the model, which is the Embedding layer. weights is now a matrix where each row is the vector for a word.
+
+weights = weights[1:]: This skips the first row (index 0), which is the vector for the 'PAD' token, as it's not a real word.
+
+Cell 12: View Embeddings
+Python
+
+pd.DataFrame(weights, index=list(id2words.values())[1:]).head()
+This line uses Pandas to display the first 5 word vectors in a nice, readable table. The index is set to the word list (also skipping 'PAD') so you can see which vector belongs to which word.
+
+Cell 13: Calculate Word Similarity
+Python
+
+distance_matrix=euclidean_distances(weights)
+This is where the word vectors are put to the test. euclidean_distances calculates the straight-line distance between every word vector and every other word vector. Similar words (like "covid" and "influenza") will have a small distance between them.
+
+Cell 14: View Distance Matrix
+Python
+
+pd.DataFrame(distance_matrix)
+This simply displays the (102 x 102) distance matrix, showing the distance from every word to every other word.
+
+Cell 15: Find Similar Words
+Python
+
+inwords = input()
+
+similar_words = {search_term: [id2words[idx] for idx in distance_matrix[words2id[search_term]-1].argsort()[0:6]]
+                   for search_term in {inwords}}
+
+similar_words
+This cell lets you test the model:
+
+inwords = input(): Prompts you to enter a word (e.g., "covid").
+
+words2id[search_term]-1: Gets the ID for your word (e.g., 3 for 'covid') and subtracts 1. This -1 is crucial because the distance_matrix was created after slicing off the 'PAD' token (ID 0). So, 'covid' (ID 3) is at index 2 in the distance_matrix.
+
+distance_matrix[...].argsort()[0:6]: This finds the row for your word in the distance matrix, sorts it by distance (from smallest to largest), and gets the indices of the 6 closest words.
+
+[id2words[idx] for idx in ...]: This final step converts those indices back into words.
+
+Note: There is a small bug in this final line. Because the distance_matrix indices are off by 1 (due to weights = weights[1:]), the lookup should be id2words[idx+1] to get the correct word. As written, the code will show the word before the correct one in the dictionary (e.g., the closest word to 'covid' (index 2) is itself, but id2words[2] is 'influenza', which is why 'influenza' appears first in the output instead of 'covid').
